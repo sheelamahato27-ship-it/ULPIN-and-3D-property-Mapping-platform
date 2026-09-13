@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import { AuthModal } from './components/AuthModal';
-import MapViewport from './map/MapViewport';
+import BuildingViewport from './components/buildingViewPort';
 import { supabase } from './components/supabaseClient';
 
 const App = () => {
@@ -37,15 +37,16 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="h-screen w-screen bg-slate-50 text-slate-800 flex flex-col overflow-hidden">
       <Navbar
         user={user}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
       />
 
-      <main className="flex-1 relative">
-        <MapViewport user={user} />
+      {/* Main Viewport Container */}
+      <main className="flex-1 w-full h-[calc(100vh-4rem)] relative overflow-hidden bg-slate-100/60">
+        <BuildingViewport user={user} />
       </main>
 
       <AuthModal

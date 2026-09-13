@@ -25,8 +25,8 @@ export default function MapViewport({ user }) {
         <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl shadow-xl flex items-center gap-3 z-10">
           <Layers className="w-5 h-5 text-indigo-400" />
           <div>
-            <p className="text-xs font-bold text-slate-100">3D Volumetric Cadastre</p>
-            <p className="text-[10px] text-slate-400">EPSG:4326 • Vertical Layer Active</p>
+            <p className="text-xs font-bold text-slate-100">3D View</p>
+            <p className="text-[10px] text-slate-400">• Vertical Layer Active</p>
           </div>
         </div>
 
