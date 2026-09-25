@@ -3,6 +3,8 @@ import Navbar from './components/Navbar';
 import { AuthModal } from './components/AuthModal';
 import BuildingViewport from './components/buildingViewPort';
 import { supabase } from './components/supabaseClient';
+import Dashboard from './components/dashboard';
+import SurveyorDashboard from './components/sur.dashboard';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -37,7 +39,7 @@ const App = () => {
   };
 
   return (
-    <div className="h-screen w-screen bg-slate-50 text-slate-800 flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-slate-50 text-slate-800 flex flex-col overflow-auto">
       <Navbar
         user={user}
         onOpenAuth={() => setIsAuthOpen(true)}
@@ -45,8 +47,8 @@ const App = () => {
       />
 
       {/* Main Viewport Container */}
-      <main className="flex-1 w-full h-[calc(100vh-4rem)] relative overflow-hidden bg-slate-100/60">
-        <BuildingViewport user={user} />
+      <main className="flex-1 w-full min-h-screen relative bg-slate-100/60">
+        <SurveyorDashboard/>
       </main>
 
       <AuthModal
