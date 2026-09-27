@@ -1,45 +1,161 @@
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense, useMemo, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Html, Center, Bounds } from '@react-three/drei';
+import * as THREE from 'three';
 import { ULPIN_DATASET } from '../services/ulpinApi';
 
-// 3D Model with Local Coordinate Elevation & Mesh Traversal Raycasting
-function Model({ onHoverUnit, onUnhoverUnit }) {
+// Recalibrated Spatial Thresholds for 3D Raycasting
+const SPATIAL_BOUNDS = {
+  // X-Axis Normalized Thresholds (0.000 = Left, 1.000 = Right)
+  X_CORRIDOR_END: 0.25,     // Main Corridor / Common Area (427.50 sq ft front / 570.00 sq ft back)
+  X_UNIT_1_3_END: 0.58,     // Left Flat Block: Unit 01 (Front) & Unit 03 (Back)
+                            // Right Flat Block: Unit 02 (Front) & Unit 04 (Back) occupies (0.58 -> 1.000)
+
+  // Z-Axis Depth Thresholds (0.000 = Rear/Back View, 1.000 = Front View)
+  Z_BACK_UNIT_MAX: 0.40,    // Back units zone (Unit 03 & Unit 04)
+  Z_EMPTY_CUTOUT_MIN: 0.40, // Central Empty Area (114.00 sq ft) between Unit 02 & Unit 04
+  Z_EMPTY_CUTOUT_MAX: 0.60,
+  Z_FRONT_UNIT_MIN: 0.60,   // Front units zone (Unit 01 & Unit 02)
+
+  // Y-Axis Floor Level Thresholds (0.000 = Base, 1.000 = Top Roof)
+  Y_BASEMENT_END: 0.166,    // Basement (B01)
+  Y_GROUND_END: 0.333,      // Ground Floor (F00)
+  Y_FLOOR1_END: 0.500,      // First Floor (F01)
+  Y_FLOOR2_END: 0.666,      // Second Floor (F02)
+  Y_FLOOR3_END: 0.833,      // Third Floor (F03)
+                            // Roof Terrace (RF01) above 0.833
+};
+
+/**
+ * Normalizes floor and unit identifiers from ULPIN_DATASET
+ * to guarantee seamless matching regardless of dataset naming conventions
+ */
+function findUlpinRecord(dataset, targetFloor, targetUnit) {
+  if (!dataset || !Array.isArray(dataset)) return null;
+
+  const extractDigits = (str) => {
+    const match = String(str || '').match(/\d+/);
+    return match ? parseInt(match[0], 10) : null;
+  };
+
+  const targetFloorNum = extractDigits(targetFloor);
+  const targetUnitNum = extractDigits(targetUnit);
+
+  return dataset.find((item) => {
+    const dbFloorStr = String(item.floor || '').toUpperCase();
+    const dbUnitStr = String(item.unit || '').toUpperCase();
+
+    // 1. Floor Matching
+    let isFloorMatch = false;
+    if (targetFloor === 'B01') {
+      isFloorMatch = dbFloorStr.includes('B') || dbFloorStr.includes('BASE');
+    } else if (targetFloor === 'RF01') {
+      isFloorMatch = dbFloorStr.includes('ROOF') || dbFloorStr.includes('RF') || dbFloorStr.includes('TERRACE');
+    } else if (targetFloor === 'F00') {
+      isFloorMatch = dbFloorStr.includes('G') || dbFloorStr.includes('GROUND') || dbFloorStr === '0' || dbFloorStr === '00';
+    } else {
+      const dbFloorNum = extractDigits(dbFloorStr);
+      isFloorMatch = dbFloorNum !== null && targetFloorNum !== null && dbFloorNum === targetFloorNum;
+    }
+
+    if (!isFloorMatch) return false;
+
+    // 2. Spatial Zone / Unit Matching
+    if (targetUnit === 'COMM') {
+      return dbUnitStr.includes('COMM') || dbUnitStr.includes('CORR') || dbUnitStr.includes('COMMON') || dbUnitStr.includes('DUCT');
+    }
+    if (targetUnit === 'BASE') {
+      return dbUnitStr.includes('BASE') || dbUnitStr.includes('PARK') || dbUnitStr.includes('B01');
+    }
+    if (targetUnit === 'ROOF') {
+      return dbUnitStr.includes('ROOF') || dbUnitStr.includes('TERR') || dbUnitStr.includes('RF');
+    }
+
+    const dbUnitNum = extractDigits(dbUnitStr);
+    if (targetUnitNum !== null && dbUnitNum !== null) {
+      return dbUnitNum === targetUnitNum;
+    }
+
+    return dbUnitStr.includes(targetUnit) || targetUnit.includes(dbUnitStr);
+  });
+}
+
+export function Model({ onHoverUnit, onUnhoverUnit }) {
   const { scene } = useGLTF('/SIH_Sample_Building.glb');
-  const groupRef = useRef();
+
+  // Clone scene to prevent memory leakage and Matrix4 corruption
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
+
+  // Calculate local bounding box for normalized percentage spatial division
+  const bbox = useMemo(() => {
+    clonedScene.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(clonedScene);
+  }, [clonedScene]);
 
   const handlePointerMove = (e) => {
     e.stopPropagation();
 
-    const mesh = e.object;
-    const meshName = mesh.name || '';
-    const parentName = mesh.parent?.name || '';
+    // Transform intersection point from world to local mesh space
+    const localPoint = clonedScene.worldToLocal(e.point.clone());
 
-    // Convert raycast point from World Space to Local Model Space
-    // (Fixes coordinate distortion caused by <Center> or <Bounds>)
-    const localPoint = groupRef.current
-      ? groupRef.current.worldToLocal(e.point.clone())
-      : e.point;
+    const spanX = bbox.max.x - bbox.min.x || 1;
+    const spanY = bbox.max.y - bbox.min.y || 1;
+    const spanZ = bbox.max.z - bbox.min.z || 1;
 
-    const localY = localPoint.y;
-    const localZ = localPoint.z;
+    // Normalize coordinates strictly to [0.0, 0.999]
+    const normX = Math.max(0, Math.min(0.999, (localPoint.x - bbox.min.x) / spanX));
+    const normY = Math.max(0, Math.min(0.999, (localPoint.y - bbox.min.y) / spanY));
+    const normZ = Math.max(0, Math.min(0.999, (localPoint.z - bbox.min.z) / spanZ));
 
-    // Search dataset by mesh name, unit code, or local height elevation (Y/Z)
-    const match = ULPIN_DATASET.find((item) => {
-      // 1. Exact or partial mesh name match
-      const nameMatch =
-        (item.ulpin && (meshName.includes(item.ulpin) || parentName.includes(item.ulpin))) ||
-        (item.unit && (meshName.includes(item.unit) || parentName.includes(item.unit))) ||
-        (item.floor && (meshName.includes(item.floor) || parentName.includes(item.floor)));
+    // Step 1: Categorize Floor Level (Y-Axis)
+    let targetFloor = '';
+    if (normY < SPATIAL_BOUNDS.Y_BASEMENT_END) {
+      targetFloor = 'B01';
+    } else if (normY < SPATIAL_BOUNDS.Y_GROUND_END) {
+      targetFloor = 'F00';
+    } else if (normY < SPATIAL_BOUNDS.Y_FLOOR1_END) {
+      targetFloor = 'F01';
+    } else if (normY < SPATIAL_BOUNDS.Y_FLOOR2_END) {
+      targetFloor = 'F02';
+    } else if (normY < SPATIAL_BOUNDS.Y_FLOOR3_END) {
+      targetFloor = 'F03';
+    } else {
+      targetFloor = 'RF01';
+    }
 
-      if (nameMatch) return true;
+    // Step 2: Categorize Flat / Common Area / Base / Roof (X & Z Axes)
+    let targetUnit = '';
 
-      // 2. Fallback elevation range matching
-      const yInRange = localY >= item.zMin && localY <= item.zMax;
-      const zInRange = localZ >= item.zMin && localZ <= item.zMax;
+    if (targetFloor === 'B01') {
+      targetUnit = 'BASE';
+    } else if (targetFloor === 'RF01') {
+      targetUnit = 'ROOF';
+    } else {
+      // Main Corridor Zone (Left wing: 427.50 sq ft front / 570.00 sq ft back)
+      if (normX < SPATIAL_BOUNDS.X_CORRIDOR_END) {
+        targetUnit = 'COMM';
+      } 
+      // First Block of Units (Unit 01 & Unit 03)
+      else if (normX < SPATIAL_BOUNDS.X_UNIT_1_3_END) {
+        targetUnit = normZ > 0.50 ? 'U01' : 'U03';
+      } 
+      // Second Block of Units (Unit 02 & Unit 04) + Empty Shaft Cutout
+      else {
+        if (normZ >= SPATIAL_BOUNDS.Z_EMPTY_CUTOUT_MIN && normZ <= SPATIAL_BOUNDS.Z_EMPTY_CUTOUT_MAX) {
+          // Empty Cutout Area between Unit 02 and Unit 04 (114.00 sq ft)
+          targetUnit = 'COMM';
+        } else if (normZ > SPATIAL_BOUNDS.Z_FRONT_UNIT_MIN) {
+          // Unit 02 (Front - 232.50 sq ft)
+          targetUnit = 'U02';
+        } else {
+          // Unit 04 (Back - 232.50 sq ft / 168.333 sq ft side view)
+          targetUnit = 'U04';
+        }
+      }
+    }
 
-      return yInRange || zInRange;
-    });
+    // Step 3: Match with ULPIN Dataset
+    const match = findUlpinRecord(ULPIN_DATASET, targetFloor, targetUnit);
 
     if (match) {
       onHoverUnit(match, { x: e.clientX, y: e.clientY });
@@ -49,16 +165,14 @@ function Model({ onHoverUnit, onUnhoverUnit }) {
   };
 
   return (
-    <group ref={groupRef}>
-      <primitive
-        object={scene}
-        onPointerMove={handlePointerMove}
-        onPointerOut={(e) => {
-          e.stopPropagation();
-          onUnhoverUnit();
-        }}
-      />
-    </group>
+    <primitive
+      object={clonedScene}
+      onPointerMove={handlePointerMove}
+      onPointerOut={(e) => {
+        e.stopPropagation();
+        onUnhoverUnit();
+      }}
+    />
   );
 }
 
@@ -68,29 +182,36 @@ export default function BuildingViewport() {
   const [svgError, setSvgError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Hover State for Tooltip
   const [hoveredUlpin, setHoveredUlpin] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-  // 2D Controls
   const [scale, setScale] = useState(1.8);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const viewportRef = useRef(null);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       viewportRef.current?.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
     } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+      document.exitFullscreen().catch(() => {});
     }
   };
 
-  // Fetch 2D SVG
   useEffect(() => {
+    let isCancelled = false;
+
     if (mode2D && !svgData) {
       fetch('/SIH_Sample_Building_2D.svg')
         .then((res) => {
@@ -98,6 +219,7 @@ export default function BuildingViewport() {
           return res.text();
         })
         .then((text) => {
+          if (isCancelled) return;
           const parser = new DOMParser();
           const doc = parser.parseFromString(text, 'image/svg+xml');
           const svgEl = doc.querySelector('svg');
@@ -119,34 +241,56 @@ export default function BuildingViewport() {
           }
           setSvgError(false);
         })
-        .catch(() => setSvgError(true));
+        .catch(() => {
+          if (!isCancelled) setSvgError(true);
+        });
     }
+
+    return () => {
+      isCancelled = true;
+    };
   }, [mode2D, svgData]);
 
-  // 2D Mouse Hover Delegation
-  const handleSvgMouseMove = (e) => {
+  const handleSvgMouseMove = useCallback((e) => {
     if (!mode2D) return;
+
     const target = e.target.closest('[id], [data-unit], [data-floor], path, rect, g');
-    if (!target) return;
-
-    const targetId = target.id || target.getAttribute('data-unit') || target.getAttribute('data-floor') || '';
-
-    if (targetId) {
-      const match = ULPIN_DATASET.find(
-        (item) =>
-          item.unit === targetId ||
-          item.floor === targetId ||
-          item.ulpin.includes(targetId) ||
-          targetId.includes(item.unit)
-      );
-
-      if (match) {
-        setHoveredUlpin(match);
-        setTooltipPos({ x: e.clientX, y: e.clientY });
-        return;
-      }
+    if (!target) {
+      setHoveredUlpin(null);
+      return;
     }
-  };
+
+    const targetId = (
+      target.id ||
+      target.getAttribute('data-unit') ||
+      target.getAttribute('data-floor') ||
+      ''
+    ).toLowerCase();
+
+    if (!targetId) {
+      setHoveredUlpin(null);
+      return;
+    }
+
+    const match = ULPIN_DATASET?.find((item) => {
+      const u = (item.unit || '').toLowerCase();
+      const f = (item.floor || '').toLowerCase();
+      const ulp = (item.ulpin || '').toLowerCase();
+
+      return (
+        (u && (u === targetId || targetId.includes(u))) ||
+        (f && (f === targetId || targetId.includes(f))) ||
+        (ulp && ulp.includes(targetId))
+      );
+    });
+
+    if (match) {
+      setHoveredUlpin(match);
+      setTooltipPos({ x: e.clientX, y: e.clientY });
+    } else {
+      setHoveredUlpin(null);
+    }
+  }, [mode2D]);
 
   const handleWheel = (e) => {
     if (!mode2D) return;
@@ -209,7 +353,7 @@ export default function BuildingViewport() {
         </button>
       </div>
 
-      {/* Fullscreen Button */}
+      {/* Fullscreen Toggle */}
       <div className="absolute top-4 right-4 z-20">
         <button
           onClick={toggleFullscreen}
@@ -219,21 +363,21 @@ export default function BuildingViewport() {
         </button>
       </div>
 
-      {/* FLOATING ULPIN TOOLTIP */}
+      {/* Hover Info Tooltip */}
       {hoveredUlpin && (
         <div
-          className="pointer-events-none fixed z-50 w-72 bg-white/95 backdrop-blur-md border border-slate-200 p-4 rounded-2xl shadow-2xl shadow-indigo-900/10 transition-transform duration-75 text-slate-800"
+          className="pointer-events-none fixed z-50 w-80 bg-white/95 backdrop-blur-md border border-slate-200 p-4 rounded-2xl shadow-2xl text-slate-800"
           style={{
-            left: `${Math.min(tooltipPos.x + 16, window.innerWidth - 300)}px`,
-            top: `${Math.min(tooltipPos.y + 16, window.innerHeight - 200)}px`,
+            left: `${Math.min(tooltipPos.x + 16, window.innerWidth - 340)}px`,
+            top: `${Math.min(tooltipPos.y + 16, window.innerHeight - 220)}px`,
           }}
         >
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
             <span className="text-[10px] font-mono font-bold uppercase bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200/60">
-              {hoveredUlpin.floor} • Unit {hoveredUlpin.unit || 'ALL'}
+              Floor {hoveredUlpin.floor} • Unit {hoveredUlpin.unit}
             </span>
             <span className="text-xs font-semibold text-slate-500 font-mono">
-              {hoveredUlpin.area} m²
+              {hoveredUlpin.area} sq ft
             </span>
           </div>
 
@@ -246,15 +390,15 @@ export default function BuildingViewport() {
           </p>
 
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-            <span>Elevation (z):</span>
+            <span>Elevation (Y):</span>
             <span className="font-semibold text-indigo-600">
-              {hoveredUlpin.zMin}m to {hoveredUlpin.zMax}m
+              {hoveredUlpin.yMin} ft to {hoveredUlpin.yMax} ft
             </span>
           </div>
         </div>
       )}
 
-      {/* 2D VIEWPORT */}
+      {/* 2D Canvas Container */}
       <div
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -285,7 +429,7 @@ export default function BuildingViewport() {
         )}
       </div>
 
-      {/* 3D CANVAS VIEWPORT */}
+      {/* 3D Canvas Container */}
       <div className={`w-full h-full ${!mode2D ? 'block' : 'hidden'}`}>
         <Canvas camera={{ position: [25, 25, 25], fov: 40 }}>
           <color attach="background" args={['#f8fafc']} />

@@ -1,0 +1,23 @@
+3d_ulpin,floor_code,unit_code,property_type,z_min_m,z_max_m,area_sqm
+FC0DC4F96C9094-B-B01-BASE,B01,BASE,Undivided Commercial/Parking Basement,-2.896,0,668.9
+FC0DC4F96C9094-G-F00-COMM,F00,COMM,Shared Common Infrastructure (Corridors + 2 Lifts),0,2.896,401.34
+FC0DC4F96C9094-G-F00-U01,F00,U01,Private Freehold Residential Flat,0,2.896,66.89
+FC0DC4F96C9094-G-F00-U02,F00,U02,Private Freehold Residential Flat,0,2.896,66.89
+FC0DC4F96C9094-G-F00-U03,F00,U03,Private Freehold Residential Flat,0,2.896,66.89
+FC0DC4F96C9094-G-F00-U04,F00,U04,Private Freehold Residential Flat,0,2.896,66.89
+FC0DC4F96C9094-A-F01-COMM,F01,COMM,Shared Common Infrastructure (Corridors + 2 Lifts),2.896,5.791,401.34
+FC0DC4F96C9094-A-F01-U01,F01,U01,Private Freehold Residential Flat,2.896,5.791,66.89
+FC0DC4F96C9094-A-F01-U02,F01,U02,Private Freehold Residential Flat,2.896,5.791,66.89
+FC0DC4F96C9094-A-F01-U03,F01,U03,Private Freehold Residential Flat,2.896,5.791,66.89
+FC0DC4F96C9094-A-F01-U04,F01,U04,Private Freehold Residential Flat,2.896,5.791,66.89
+FC0DC4F96C9094-A-F02-COMM,F02,COMM,Shared Common Infrastructure (Corridors + 2 Lifts),5.791,8.687,401.34
+FC0DC4F96C9094-A-F02-U01,F02,U01,Private Freehold Residential Flat,5.791,8.687,66.89
+FC0DC4F96C9094-A-F02-U02,F02,U02,Private Freehold Residential Flat,5.791,8.687,66.89
+FC0DC4F96C9094-A-F02-U03,F02,U03,Private Freehold Residential Flat,5.791,8.687,66.89
+FC0DC4F96C9094-A-F02-U04,F02,U04,Private Freehold Residential Flat,5.791,8.687,66.89
+FC0DC4F96C9094-A-F03-COMM,F03,COMM,Shared Common Infrastructure (Corridors + 2 Lifts),8.687,11.582,401.34
+FC0DC4F96C9094-A-F03-U01,F03,U01,Private Freehold Residential Flat,8.687,11.582,66.89
+FC0DC4F96C9094-A-F03-U02,F03,U02,Private Freehold Residential Flat,8.687,11.582,66.89
+FC0DC4F96C9094-A-F03-U03,F03,U03,Private Freehold Residential Flat,8.687,11.582,66.89
+FC0DC4F96C9094-A-F03-U04,F03,U04,Private Freehold Residential Flat,8.687,11.582,66.89
+FC0DC4F96C9094-R-RF01-ROOF,RF01,ROOF,Undivided Shared Rooftop & Air Rights,11.582,13.082,668.9
