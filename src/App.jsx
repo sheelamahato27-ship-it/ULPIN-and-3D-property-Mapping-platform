@@ -48,7 +48,7 @@ const App = () => {
 
       {/* Main Viewport Container */}
       <main className="flex-1 w-full min-h-screen relative bg-slate-100/60">
-        <SurveyorDashboard/>
+        <Dashboard/>
       </main>
 
       <AuthModal

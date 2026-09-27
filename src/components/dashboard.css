@@ -62,6 +62,11 @@
     visibility: visible;
     transform: translateY(0);
 }
+.dropdown-column{
+    width: auto;
+    flex:1;
+    
+}
 
 
 .dropdown-column h3 {
@@ -78,6 +83,7 @@
     color: #555;
 
     font-size: 14px;
+    font-weight: 300;
 
     margin-bottom: 14px;
 
@@ -86,6 +92,9 @@
 
 .dropdown-column a:hover {
     color: #1769aa;
+}
+.dropdown-column p{
+    width:650px;
 }
 .logo{
     display: flex;
